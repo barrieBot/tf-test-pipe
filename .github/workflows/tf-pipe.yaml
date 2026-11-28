@@ -3,7 +3,7 @@ name: Terraform W3
 on:
   workflow_dispatch:
     inputs:
-      operaton:
+      operation:
         description: Terraform operation
         type: choice
         required: true

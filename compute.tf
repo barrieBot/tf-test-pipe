@@ -11,7 +11,7 @@ data "aws_ami" "ubuntu" {
   owners = ["099720109477"] #this is the ID of the Image owner, in this case Canonical
 }
 
-# Define the EC2 instance
+# Define the EC2 instance   
 resource "aws_instance" "web-server" {
   count = length(aws_subnet.infc-pub-subnet)
 

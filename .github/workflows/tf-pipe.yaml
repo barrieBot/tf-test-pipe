@@ -1,0 +1,134 @@
+name: Terraform W3
+
+on:
+  workflow_dispatch:
+    inputs:
+      operaton:
+        description: Terraform operation
+        type: choice
+        required: true
+        default: plan
+        options:
+          - plan
+          - apply
+          - destroy
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terraform-infc-w3 # terraform HCP workspace
+  cancel-in-progress: false
+
+env:
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+
+jobs:
+  terraform:
+    name: Terraform ${{ inputs.operation }}
+    runs-on: ubuntu-latest
+
+    if: github.ref == 'refs/heads/main'
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout reppsitory
+        uses: actions/checkout@v4
+
+      - name: Check Terraform version config
+        env:
+          CONFIGURED_TF_VERSION: ${{ vars.TF_VERSION }}
+        run: |
+          if [ -z "${CONFIGURED_TF_VERSION}" ] then;
+            echo "Set the TF_VERSION repository variable first."
+            exit 1
+          fi
+
+      - name: Install Terraform and configure HCP auth
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ vars.TF_VERSION }}
+          cli_config_credentials_hostname: app.terraform.io
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6.3.1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: us-east-1
+
+      - name: Verify AWS auth
+        run: aws sts get-caller-identity
+
+      - name: Check Terraform formatting
+        run: terraform fmt -check
+
+      - name: Initialize Terraform
+        run: terraform init -input=false -lockfile=readonly
+
+      - name: Validate Terraform config
+        run: terraform validate -no-color
+
+      - name: Create Terraform plan
+        env:
+          OPERATION: ${{ inputs.operation }}
+        run: |
+          PLAN_ARGS=()
+
+          if [ "$OPERATION" = "destroy"] then;
+            PLAN_ARGS+=("-destroy")
+          fi
+
+          terraform plan \
+          "${PLAN_ARGS[@]}" \
+          -input=false \
+          -no-color \
+          -lock-timeout=5m \
+          -var-file=variables.tfvars \
+          -out=tfplan
+
+      - name: Apply Terraform plan
+        if: ${{ inputs.operation == 'apply' || inputs.operation == 'destroy' }}
+        run: >
+          terraform apply
+          -input=false
+          -no-color
+          -lock-timeout=5m
+          tfplan
+
+      - name: Show load balancer dns address
+        if: ${{ inputs.operation == 'apply' }}
+        run: terraform output -raw lb_dns
+
+      - name: Save updated Terraform state
+        if: ${{ always() && (inputs.operation == 'apply' || inputs.operation == 'destroy') }}
+        run: |
+          if [ ! -f terraform.tfstate ]; then
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add terraform.tfstate
+
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+
+          git commit -m "Update Terraform state"
+          git push origin HEAD:main
+
+      - name: Preserve state if the run fails
+        if: ${{ failure() && (inputs.operation == 'apply' || inputs.operation == 'destroy') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-state-recovery
+          path: terraform/W3/terraform.tfstate
+          retention-days: 7

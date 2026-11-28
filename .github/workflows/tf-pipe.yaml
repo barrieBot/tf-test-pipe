@@ -43,7 +43,7 @@ jobs:
         env:
           CONFIGURED_TF_VERSION: ${{ vars.TF_VERSION }}
         run: |
-          if [ -z "${CONFIGURED_TF_VERSION}" ] then;
+          if [ -z "${CONFIGURED_TF_VERSION}" ]; then
             echo "Set the TF_VERSION repository variable first."
             exit 1
           fi
@@ -81,7 +81,7 @@ jobs:
         run: |
           PLAN_ARGS=()
 
-          if [ "$OPERATION" = "destroy"] then;
+          if [ "$OPERATION" = "destroy"]; then
             PLAN_ARGS+=("-destroy")
           fi
 

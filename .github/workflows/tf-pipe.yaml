@@ -90,7 +90,7 @@ jobs:
           -input=false \
           -no-color \
           -lock-timeout=5m \
-          -var-file=variables.tfvars \
+          -var-file=terraform.tfvars \
           -out=tfplan
 
       - name: Apply Terraform plan
